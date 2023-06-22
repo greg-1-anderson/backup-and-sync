@@ -1,0 +1,75 @@
+#
+# backup-and-sync install script
+#
+# To install:
+#
+#     $ source install [--bashrc | --bash_profile | --profile] [--configure-git | --no-configure-git]
+#
+# By default, this script will install to ~/.bash_profile, unless it looks like
+# ~/.bash_profile sources ~/.bashrc (recommended), in which case we install to ~/.bashrc.
+# You may stipulate the exact install location by providing the appropriate flag.
+#
+
+# Get the path to the directory this script was ran from
+SCRIPT_DIR=$( cd -- "$( dirname -- "${BASH_SOURCE[0]}" )" &> /dev/null && pwd )
+
+# Presume that we will install to .bash_profile. If it looks like
+# .bash_profile is including .bashrc, then we will install to .bashrc.
+INSTALL_TO=".bash_profile"
+if [ ! -f "$INSTALL_TO" ] || grep -q bashrc "$HOME/$INSTALL_TO" ; then
+	INSTALL_TO=".bashrc"
+fi
+
+# TODO: Maybe check to see if git defaults have already been changed,
+# and default to false if so?
+CONFIGURE_GIT=true
+
+# Parse options
+while [ $# -gt 0 ] ; do
+	option=$1
+	shift
+
+	case "$option" in
+		--with-cdd )
+			WITH_CDD=true
+			;;
+
+		--bashrc )
+			INSTALL_TO=".bashrc"
+			;;
+
+		--bash_profile )
+			INSTALL_TO=".bash_profile"
+			;;
+
+		--profile )
+			INSTALL_TO=".profile"
+			;;
+
+		--configure-git )
+			CONFIGURE_GIT=true
+			;;
+
+		--no-configure-git )
+			CONFIGURE_GIT=false
+			;;
+	esac
+done
+
+# If it looks like our bashrc file is already being sourced, then exit.
+if grep -q backup-and-sync-bashrc "$HOME/$INSTALL_TO" ; then
+	echo "backup-and-sync-bashrc file is already sourced from ~/$INSTALL_TO)"
+	return
+fi
+
+cat <<- __EOF__ >> "$HOME/$INSTALL_TO"
+
+	# Source the git-bashrc configuration file.
+	# See: https://github.com/g1a/git-bashrc
+	source "$SCRIPT_DIR/backup-and-sync-bashrc"
+__EOF__
+
+echo "Installed 'source backup-and-sync-bashrc' in ~/$INSTALL_TO"
+
+# Source fd so that it is available in this shell.
+source $SCRIPT_DIR/backup-and-sync-bashrc
