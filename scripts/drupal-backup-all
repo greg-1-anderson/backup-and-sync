@@ -88,12 +88,21 @@ FORCE_UPDATE=false
 NOTIFY=
 VERBOSE=false
 SIMULATE=false
-EXEC=
 
 # Start with an empty backup list.
 backup_list=
 backup_base_dir=/data/archive/drupal
 hash_tables=node
+
+execute()
+{
+  if [ "${SIMULATE}" != false ]; then
+    echo "${*}"
+    return
+  fi
+
+  eval "${@}"
+}
 
 #
 # Parse command line args
@@ -146,7 +155,7 @@ while [ $# -gt 0 ] ; do
       # Test to see if we have site aliases defined for the specified site.
       # TODO: We assume 'live' is remote and 'backup' is local.  Confirm this?
       site=$option
-      if [ -z "$(drush site-alias @$site.live 2>/dev/null)" ] || [ -z "$(drush site-alias @$site.backup 2>/dev/null)" ] ; then
+      if [ -z "$(drush site-alias @${site}.live 2>/dev/null)" ] || [ -z "$(drush site-alias @${site}.backup 2>/dev/null)" ] ; then
         (
           echo "The site alias @$option is either not defined, or is missing"
           echo "'live' and/or 'backup' site records."
@@ -198,7 +207,7 @@ for site in ${backup_list} ; do
   msg="=== Checking ${site} for changes ==="
   $FORCE && msg="=== Backup forced for ${site} ==="
   echo $msg 1>&2
-  drush @$site.live sql-query --db-prefix 'select max(nid),max(changed) from {node}' > $cur_hash_file 2>/dev/null
+  drush @${site}.live sql-query --db-prefix 'select max(nid),max(changed) from {node}' > $cur_hash_file 2>/dev/null
   if [ ! -f $hash_file ] || [ "x`diff $cur_hash_file $hash_file`" != "x" ] || $FORCE ; then
     msg="$(date "+%Y-%m-%d %H:%M")"
     echo "$msg :: Begin backup of $site" 1>&2
@@ -213,7 +222,7 @@ for site in ${backup_list} ; do
     # to get the Drupal files.  There were just too many different
     # ways this can go wrong, so instead, I now just rsync
     # everything over, vcs files included.
-    $EXEC drush -y -v --include-vcs rsync @$site.live @$site.backup
+    execute drush -y -v --include-vcs rsync @${site}.live @${site}.backup
 
     # Move the previous database dump into the history folder,
     # after first compressing it with gzip
@@ -224,43 +233,43 @@ for site in ${backup_list} ; do
       migratehistories --quiet --migrating "$compressed_dump" --history-root "$history_dir" --target-extension .sql.gz
     fi
     # Get current commit tag and write it into live database
-    live_root=$(drush drupal-directory @$site.live:%root)
-    head_commithash=$(drush @$site.live ssh "cd $live_root && git rev-parse HEAD")
-    $EXEC drush -v @$site.live vset --always-set -y git_commithash "$head_commithash"
+    live_root=$(drush drupal-directory @${site}.live:%root)
+    head_commithash=$(drush @${site}.live ssh "cd $live_root && git rev-parse HEAD")
+    execute drush -v @${site}.live vset --always-set -y git_commithash "$head_commithash"
 
     # Sync the sql database from the live site to the backup site,
     # Drop the database into place in the backup folder by using it
     # as the target-dump.
-    $EXEC drush -y sql-sync --target-dump="$dump_file" @$site.live @$site.backup
+    execute drush -y sql-sync --target-dump="$dump_file" @${site}.live @${site}.backup
     # Clear the cache, drop the watchdog entries, and overwrite the backup file
     # TODO: It would be more efficient to de-select the cache and watchdog
     # tables in the sql-sync above.
-    $EXEC drush -y @$site.backup watchdog-delete all 1>&2
-    $EXEC drush -y @$site.backup cc all 1>&2
-    $EXEC drush -y @$site.backup sql-dump --result-file="$dump_file" 1>&2
+    execute drush -y @${site}.backup watchdog-delete all 1>&2
+    execute drush -y @${site}.backup cc all 1>&2
+    execute drush -y @${site}.backup sql-dump --result-file="$dump_file" 1>&2
 
     # Check to see if %files has been committed to the git repository.
     # If it has not, then the log line will be empty.
-    files_dir=$(drush dd @$site.backup:%files)
-    log_line=$(cd $(drush dd @$site.backup:%files); git log -1 --oneline $files_dir)
+    files_dir=$(drush dd @${site}.backup:%files)
+    log_line=$(cd $(drush dd @${site}.backup:%files); git log -1 --oneline $files_dir)
     # If %files are not in the repository, then copy them via rsync
     if [ -z "$log_line" ] ; then
-      #echo drush -y -v rsync @$site.live:%files @$site.backup:%files
-      $EXEC drush -y -v rsync @$site.live:%files @$site.backup:%files
+      #echo drush -y -v rsync @${site}.live:%files @${site}.backup:%files
+      execute drush -y -v rsync @${site}.live:%files @${site}.backup:%files
     fi
 
     # Do the same operation with %private
-    private_dir=$(drush dd @$site.backup:%private 2>/dev/null)
+    private_dir=$(drush dd @${site}.backup:%private 2>/dev/null)
     if [ -n "$private_dir" ] ; then
-      log_line=$(cd $(drush dd @$site.backup:%private); git log -1 --oneline $private_dir)
+      log_line=$(cd $(drush dd @${site}.backup:%private); git log -1 --oneline $private_dir)
       # If %private are not in the repository, then copy them via rsync
       if [ -z "$log_line" ] ; then
-        #echo drush -y -v rsync @$site.live:%private @$site.backup:%private
-        $EXEC drush -y -v rsync @$site.live:%private @$site.backup:%private
+        #echo drush -y -v rsync @${site}.live:%private @${site}.backup:%private
+        execute drush -y -v rsync @${site}.live:%private @${site}.backup:%private
       fi
     fi
 
-    drush @$site.backup sql-query --db-prefix 'select max(nid),max(changed) from {node}' > $backup_hash_file 2>/dev/null
+    drush @${site}.backup sql-query --db-prefix 'select max(nid),max(changed) from {node}' > $backup_hash_file 2>/dev/null
     if [ "x`diff $hash_file $backup_hash_file`" != "x" ] ; then
       # We don't want to take the site offline while backing up, but it would be
       # useful if we could disable editing while backups are in progress.  Maybe
@@ -275,10 +284,10 @@ for site in ${backup_list} ; do
     fi
 
     # Make sure that the group for the files remains www-data
-    $EXEC find $(drush drupal-directory @$site.backup) \! -group www-data -exec chgrp www-data {} \;
+    execute find $(drush drupal-directory @${site}.backup) \! -group www-data -exec chgrp www-data {} \;
 
     # Keep calm and clear the cache, in case any files changed
-    $EXEC drush -y @$site.backup cache-clear all
+    execute drush -y @${site}.backup cache-clear all
 
   else
     echo "[n/a] Backup not needed for $site" 1>&2
@@ -287,12 +296,12 @@ for site in ${backup_list} ; do
 
   # Check to see if any updates are available.
   echo "=== Checking ${site} for updates ===" 1>&2
-  drush @$site.backup pm-updatecode -n --pipe > $cur_update_list_file 2>/dev/null
+  drush @${site}.backup pm-updatecode -n --pipe > $cur_update_list_file 2>/dev/null
   if [ -s $cur_update_list_file ] ; then
     if [ ! -f $update_list_file ] || [ "x`diff $cur_update_list_file $update_list_file`" != "x" ] || $FORCE_UPDATE ; then
       # If there is a @site.update alias defined, then automatically
       # perform a pm-update, so the result will be available for testing.
-      if [ -n "$(drush site-alias @$site.update 2>/dev/null)" ] ; then
+      if [ -n "$(drush site-alias @${site}.update 2>/dev/null)" ] ; then
         # TODO: If we preserved the creation date of $update_list_file,
         # then we could output how long this site has been waiting for an
         # update below.
@@ -302,36 +311,36 @@ for site in ${backup_list} ; do
 
         # Make sure update site has the most recent code.
         (
-          cd $(drush drupal-directory @$site.update)
+          cd $(drush drupal-directory @${site}.update)
           # TODO: we could use `git pull backup master 1>&2` here for increased
           # performance (pull locally rather than remotely) if we were sure that
           # the git remote 'backup' was defined.
-          $EXEC git pull 1>&2
+          execute git pull 1>&2
         )
         # Sync the database
-        $EXEC drush -y sql-sync --source-dump="$dump_file" @$site.backup @$site.update
-        $EXEC drush -y @$site.update cc all 1>&2
+        execute drush -y sql-sync --source-dump="$dump_file" @${site}.backup @${site}.update
+        execute drush -y @${site}.update cc all 1>&2
 
         # Again, copy %files and %private for convenience
-        files_dir=$(drush dd @$site.update:%files)
-        log_line=$(cd $(drush dd @$site.update:%files); git log -1 --oneline $files_dir)
+        files_dir=$(drush dd @${site}.update:%files)
+        log_line=$(cd $(drush dd @${site}.update:%files); git log -1 --oneline $files_dir)
         if [ -z "$log_line" ] ; then
-          $EXEC drush -y rsync @$site.backup:%files @$site.update:%files
+          execute drush -y rsync @${site}.backup:%files @${site}.update:%files
         fi
-        private_dir=$(drush dd @$site.update:%private 2>/dev/null)
+        private_dir=$(drush dd @${site}.update:%private 2>/dev/null)
         if [ -n "$private_dir" ] ; then
-          log_line=$(cd $(drush dd @$site.update:%private); git log -1 --oneline $private_dir)
+          log_line=$(cd $(drush dd @${site}.update:%private); git log -1 --oneline $private_dir)
           # If %private are not in the repository, then copy them via rsync
           if [ -z "$log_line" ] ; then
-            $EXEC drush -y rsync @$site.backup:%private @$site.update:%private
+            execute drush -y rsync @${site}.backup:%private @${site}.update:%private
           fi
         fi
 
         # Run the update
         update_list="${update_list} $site"
-        $SIMULATE && echo drush -y @$site.update pm-update 1>&2
-        $SIMULATE && echo drush -n @$site.update pm-updatecode > $update_log_file 2>&1
-        $SIMULATE || drush -y @$site.update pm-update > $update_log_file 2>&1
+        $SIMULATE && echo drush -y @${site}.update pm-update 1>&2
+        $SIMULATE && echo drush -n @${site}.update pm-updatecode > $update_log_file 2>&1
+        $SIMULATE || drush -y @${site}.update pm-update > $update_log_file 2>&1
         (
           echo "=== Update log for ${site} ==="
           echo
@@ -342,7 +351,7 @@ for site in ${backup_list} ; do
         ) >> $update_notify_file
 
         # Make sure that the group for the files remains www-data
-        $EXEC find $(drush drupal-directory @$site.update) \! -group www-data -exec chgrp www-data {} \;
+        execute find $(drush drupal-directory @${site}.update) '!' -group www-data -exec chgrp www-data '{}' ';'
 
         echo "Update complete for $site" 1>&2
       else
@@ -368,7 +377,7 @@ if [ -n "${update_list}" ] && [ -n "$NOTIFY" ] ; then
   if [ ! $SIMULATE ] && [ -n "${ssh_relay}" ] ; then
     (ssh "${ssh_relay} mail -s \"'Drupal update log for ${update_list}'\" $NOTIFY") < $update_notify_file
   else
-    $EXEC mail -s "Drupal update log for ${update_list}" $NOTIFY < $update_notify_file
+    execute mail -s "Drupal update log for ${update_list}" $NOTIFY < $update_notify_file
   fi
 fi
 
