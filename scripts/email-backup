@@ -2,19 +2,21 @@
 #
 # Usage:
 #
-# email-backup user1 user2
+# email-backup --server=root@mail.example.com --archive-dir=/backup/dir [--no-user-perms] user1 user2
 #
-# Back up all the things
+# Back up all the email things
 #
 
 ARCHIVE_DIR=/data/archive/email
 SERVER=ga@example.com
+USER_PERMS=true
 
 # %H     hour (00..23)
 # day of week (0..6); 0 is Sunday
 # %s     seconds since 1970-01-01 00:00:00 UTC
 # %m     month (01..12)
 HOUR=$(date +%H)
+YEAR=$(date +%Y)
 SEQUENCE=$(($(date +%m)%3))
 EPOCH=$(date +%s)
 
@@ -37,6 +39,10 @@ while [ $# -gt 0 ] ; do
       shift
       ;;
 
+    --no-user-perms )
+      USER_PERMS=false
+      ;;
+
     --* )
       echo "Unknown option $option"
       exit 1;
@@ -53,9 +59,17 @@ done
 # Backup email for each user in the user list in turn
 #
 for user in $USERLIST ; do
-  # Once per day, do a rolling backup, keeping the last 7 days.
+  mkdir -p "$ARCHIVE_DIR/$user/current"
+
+  # Keep anual backups until the end of time (or until manually removed)
+  ANNUAL="$ARCHIVE_DIR/$user/history/$YEAR"
+  if [ ! -d "$ANNUAL" ] ; then
+    mkdir -p "$ANNUAL"
+    ln -fs "$ANNUAL" "$ARCHIVE_DIR/$user/current"
+  fi
+  # Keep rolling backups over the last three months
   # If the "ROLLING" folder exists, check to see if it is "too old".
-  ROLLING=$ARCHIVE_DIR/$user/history/rolling/$SEQUENCE
+  ROLLING="$ARCHIVE_DIR/$user/history/rolling/$SEQUENCE"
   if [ -d "$ROLLING" ] ; then
     ROLLING_DIR_EPOCH=$(stat --format=%Y $ROLLING)
     DELTA=$(($EPOCH-$ROLLING_DIR_EPOCH))
@@ -71,10 +85,16 @@ for user in $USERLIST ; do
   # which will create files with hard links rather than separate copies
   # of each file.
   if [ ! -d "$ROLLING" ] ; then
-    mkdir -p $ROLLING
-    cp -alf $ARCHIVE_DIR/$user/mail $ROLLING
+    mkdir -p "$ROLLING"
+    cp -alf "$ANNUAL" "$ROLLING"
   fi
+
+  RSYNC_PERMS="--chmod 600"
+  if [ $USER_PERMS ] && [ -d /home/$user ] ; then
+    RSYNC_PERMS="--chown=$user:mail --chmod=660"
+  fi
+
   # Back up from server
-  rsync -rlptz --exclude=backup --exclude='Ze ' --exclude=Trash --exclude='.imap' --exclude='msgid.cache' --exclude='.subscriptions' --exclude='proc-log' --exclude=Drafts $SERVER:/home/$user/mail $ARCHIVE_DIR/$user
-  rsync -rlptz $SERVER:/var/mail/$user $ARCHIVE_DIR/$user/mail/var-mail-$user
+  rsync -rltNz --delete $RSYNC_PERMS --exclude=backup --exclude='Ze ' --exclude=Trash --exclude='msgid.cache' --exclude='.subscriptions' --exclude='proc-log' --exclude=Drafts $SERVER:/home/$user/mail $ARCHIVE_DIR/$user/current
+  rsync -ltNz $RSYNC_PERMS $SERVER:/var/mail/$user $ARCHIVE_DIR/$user/current/inbox
 done
