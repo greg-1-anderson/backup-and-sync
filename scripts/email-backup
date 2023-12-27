@@ -2,9 +2,14 @@
 #
 # Usage:
 #
-# email-backup --server=root@mail.example.com --archive-dir=/backup/dir [--no-user-perms] user1 user2
+# email-backup --key /root/.ssh/id_rsa --server root@mailserver.example.com --archive-dir /backup/path [--no-user-perms] user1 user2
 #
 # Back up all the email things
+#
+#
+# Example cron usage (daily at 3am):
+#
+# 0 3 * * * /root/bin/email-backup --key /root/.ssh/id_rsa --server root@mailserver.example.com --archive-dir /backup/path user1 user2
 #
 
 ARCHIVE_DIR=/data/archive/email
@@ -19,6 +24,7 @@ HOUR=$(date +%H)
 YEAR=$(date +%Y)
 SEQUENCE=$(($(date +%m)%3))
 EPOCH=$(date +%s)
+KEY=
 
 #
 # Parse command line args
@@ -43,6 +49,11 @@ while [ $# -gt 0 ] ; do
       USER_PERMS=false
       ;;
 
+    --key )
+      KEY="$1"
+      shift
+      ;;
+
     --* )
       echo "Unknown option $option"
       exit 1;
@@ -55,46 +66,61 @@ while [ $# -gt 0 ] ; do
   esac
 done
 
+if [ ! -f "$KEY" ] && [ -f "$HOME/.ssh/$KEY" ] ; then
+  KEY="$HOME/.ssh/$KEY"
+fi
+
 #
 # Backup email for each user in the user list in turn
 #
 for user in $USERLIST ; do
-  mkdir -p "$ARCHIVE_DIR/$user/current"
+
+  # If there is a 'current' archive, keep rolling backups for the past 3 months
+  if [ -f "$ARCHIVE_DIR/$user/current/inbox" ] ; then
+    # Keep rolling backups over the last three months
+    # If the "ROLLING" folder exists, check to see if it is "too old".
+    ROLLING="$ARCHIVE_DIR/$user/history/rolling/$SEQUENCE"
+    if [ -d "$ROLLING" ] ; then
+      ROLLING_DIR_EPOCH=$(stat --format=%Y $ROLLING)
+      DELTA=$(($EPOCH-$ROLLING_DIR_EPOCH))
+      # Anything > 32 days is "too old".  If it is, delete it to
+      # force a new rolling backup to be created.
+      if [ "$DELTA" -gt "$((32*24*60*60))" ] ; then
+        rm -rf "$ROLLING"
+      fi
+    fi
+    # If there is no "ROLLING" folder, then create it with cp -alf,
+    # which will create files with hard links rather than separate copies
+    # of each file.
+    if [ ! -d "$ROLLING" ] ; then
+      mkdir -p "$ROLLING"
+      cp -alf "$ARCHIVE_DIR/$user/current/"* "$ROLLING"
+    fi
+  fi
 
   # Keep anual backups until the end of time (or until manually removed)
   ANNUAL="$ARCHIVE_DIR/$user/history/$YEAR"
   if [ ! -d "$ANNUAL" ] ; then
     mkdir -p "$ANNUAL"
+    rm "$ARCHIVE_DIR/$user/current" 2>/dev/null
     ln -fs "$ANNUAL" "$ARCHIVE_DIR/$user/current"
   fi
-  # Keep rolling backups over the last three months
-  # If the "ROLLING" folder exists, check to see if it is "too old".
-  ROLLING="$ARCHIVE_DIR/$user/history/rolling/$SEQUENCE"
-  if [ -d "$ROLLING" ] ; then
-    ROLLING_DIR_EPOCH=$(stat --format=%Y $ROLLING)
-    DELTA=$(($EPOCH-$ROLLING_DIR_EPOCH))
-    # Anything > 32 days is "too old".  If it is, delete it to
-    # force a new rolling backup to be created.
-    if [ "$DELTA" -gt "$((32*24*60*60))" ] ; then
-      # TODO: Check to see if we should move the "ROLLING" folder
-      # to a long-term-backup directory
-      rm -rf "$ROLLING"
-    fi
-  fi
-  # If there is no "ROLLING" folder, then create it with cp -alf,
-  # which will create files with hard links rather than separate copies
-  # of each file.
-  if [ ! -d "$ROLLING" ] ; then
-    mkdir -p "$ROLLING"
-    cp -alf "$ANNUAL" "$ROLLING"
+
+  # Set up ssh key parameters, if specified
+  RSYNC_SSH_KEY=ssh
+  if [ -n "$KEY" ] ; then
+    RSYNC_SSH_KEY="ssh -i $KEY"
   fi
 
-  RSYNC_PERMS="--chmod 600"
+  # If remote user exists locally, set permissions so that they may read backup
+  RSYNC_PERMS="--chmod=Du=rwx,Dg=,Do=,Fu=rw,Fg=,Fo="
   if [ $USER_PERMS ] && [ -d /home/$user ] ; then
-    RSYNC_PERMS="--chown=$user:mail --chmod=660"
+    RSYNC_PERMS="--chown=$user:mail --chmod=Du=rx,Dg=rx,Do=,Fu=r,Fg=r,Fo="
   fi
 
   # Back up from server
-  rsync -rltNz --delete $RSYNC_PERMS --exclude=backup --exclude='Ze ' --exclude=Trash --exclude='msgid.cache' --exclude='.subscriptions' --exclude='proc-log' --exclude=Drafts $SERVER:/home/$user/mail $ARCHIVE_DIR/$user/current
-  rsync -ltNz $RSYNC_PERMS $SERVER:/var/mail/$user $ARCHIVE_DIR/$user/current/inbox
+  rsync -rltz --delete -e "$RSYNC_SSH_KEY" $RSYNC_PERMS --exclude=backup --exclude='Ze ' --exclude=Trash --exclude='msgid.cache' --exclude='.subscriptions' --exclude='proc-log' --exclude=Drafts $SERVER:/home/$user/mail $ARCHIVE_DIR/$user/current/
+  chmod +x $ARCHIVE_DIR/$user/current/mail
+  rsync -ltz -e "$RSYNC_SSH_KEY" $RSYNC_PERMS $SERVER:/var/mail/$user $ARCHIVE_DIR/$user/current/inbox
+
 done
