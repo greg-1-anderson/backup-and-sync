@@ -12,6 +12,9 @@
 # 0 3 * * * /root/bin/email-backup --key /root/.ssh/id_rsa --server root@mailserver.example.com --archive-dir /backup/path user1 user2
 #
 
+# Set up for use in cron / as root; only set base paths
+PATH=/bin:/usr/bin:/sbin:/usr/sbin
+
 ARCHIVE_DIR=/data/archive/email
 SERVER=ga@example.com
 USER_PERMS=true
@@ -25,6 +28,7 @@ YEAR=$(date +%Y)
 SEQUENCE=$(($(date +%m)%3))
 EPOCH=$(date +%s)
 KEY=
+
 
 #
 # Parse command line args
@@ -119,7 +123,7 @@ for user in $USERLIST ; do
   fi
 
   # Back up from server
-  rsync -rltz --delete -e "$RSYNC_SSH_KEY" $RSYNC_PERMS --exclude=backup --exclude='Ze ' --exclude=Trash --exclude='msgid.cache' --exclude='.subscriptions' --exclude='proc-log' --exclude=Drafts $SERVER:/home/$user/mail $ARCHIVE_DIR/$user/current/
+  rsync -rltz --delete -e "$RSYNC_SSH_KEY" $RSYNC_PERMS --exclude=backup --exclude='Ze *' --exclude=Trash --exclude='msgid.cache' --exclude='.subscriptions' --exclude='proc-log' --exclude=Drafts $SERVER:/home/$user/mail $ARCHIVE_DIR/$user/current/
   chmod +x $ARCHIVE_DIR/$user/current/mail
   rsync -ltz -e "$RSYNC_SSH_KEY" $RSYNC_PERMS $SERVER:/var/mail/$user $ARCHIVE_DIR/$user/current/inbox
 
