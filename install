@@ -3,14 +3,14 @@
 #
 # To install:
 #
-#     $ source install [--bashrc | --bash_profile | --profile] [--configure-git | --no-configure-git]
+#     $ source install [--bashrc | --bash_profile | --profile]
 #
 # By default, this script will install to ~/.bash_profile, unless it looks like
 # ~/.bash_profile sources ~/.bashrc (recommended), in which case we install to ~/.bashrc.
 # You may stipulate the exact install location by providing the appropriate flag.
 #
 
-# Get the path to the directory this script was ran from
+# Get the path to the directory this script was executed from
 SCRIPT_DIR=$( cd -- "$( dirname -- "${BASH_SOURCE[0]}" )" &> /dev/null && pwd )
 
 # Presume that we will install to .bash_profile. If it looks like
@@ -20,20 +20,12 @@ if [ ! -f "$INSTALL_TO" ] || grep -q bashrc "$HOME/$INSTALL_TO" ; then
 	INSTALL_TO=".bashrc"
 fi
 
-# TODO: Maybe check to see if git defaults have already been changed,
-# and default to false if so?
-CONFIGURE_GIT=true
-
 # Parse options
 while [ $# -gt 0 ] ; do
 	option=$1
 	shift
 
 	case "$option" in
-		--with-cdd )
-			WITH_CDD=true
-			;;
-
 		--bashrc )
 			INSTALL_TO=".bashrc"
 			;;
@@ -44,14 +36,6 @@ while [ $# -gt 0 ] ; do
 
 		--profile )
 			INSTALL_TO=".profile"
-			;;
-
-		--configure-git )
-			CONFIGURE_GIT=true
-			;;
-
-		--no-configure-git )
-			CONFIGURE_GIT=false
 			;;
 	esac
 done

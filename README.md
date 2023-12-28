@@ -6,15 +6,23 @@ To persistently install these scripts in your `$PATH`, run:
 source install
 ```
 
-*IMPORTANT NOTE:* These scripts have not gotten much use in quite a while, and might need some maintenance before being servicable again.
+To install the email backup script to run daily **AS ROOT**, run:
 
-## Index of Scripts
+```bash
+sudo ./install-root-crontab.sh --server mail.example.com --archive-dir /data/archive/email user1 user2
+```
+
+### Index of Maintained Scripts
+
+- `email-backup`
+Uses rsync to back up mail folders from a remote system. For use by those who run their own email servers. O_o
+
+*IMPORTANT NOTE:* The scripts below have not gotten much use in quite a while, and might need some maintenance before being servicable again.
+
+## Index of Poorly-Maintained Scripts
 
 - `drupal-backup-all`
 Uses Drush aliases to keep "backup" and "update" versions of a site in sync. The aliases and backup sites must be installed manually.
-
-- `email-backup`
-Uses rsync to back up mail folders from a remote system.
 
 - `git-backup-all`
 Uses `git clone --bare` and/or `git fetch` to mirror remote git repositories.

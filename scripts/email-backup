@@ -2,7 +2,7 @@
 #
 # Usage:
 #
-# email-backup --key /root/.ssh/id_rsa --server root@mailserver.example.com --archive-dir /backup/path [--no-user-perms] user1 user2
+# email-backup --key /root/.ssh/id_rsa --server mailserver.example.com --archive-dir /backup/path [--no-user-perms] user1 user2
 #
 # Back up all the email things
 #
@@ -16,7 +16,8 @@
 PATH=/bin:/usr/bin:/sbin:/usr/sbin
 
 ARCHIVE_DIR=/data/archive/email
-SERVER=ga@example.com
+SERVER=example.com
+REMOTE_USER=root
 USER_PERMS=true
 
 # %H     hour (00..23)
@@ -46,6 +47,11 @@ while [ $# -gt 0 ] ; do
 
     --server )
       SERVER="$1"
+      shift
+      ;;
+
+    --remote-user )
+      REMOTE_USER="$1"
       shift
       ;;
 
@@ -123,8 +129,8 @@ for user in $USERLIST ; do
   fi
 
   # Back up from server
-  rsync -rltz --delete -e "$RSYNC_SSH_KEY" $RSYNC_PERMS --exclude=backup --exclude='Ze *' --exclude=Trash --exclude='msgid.cache' --exclude='.subscriptions' --exclude='proc-log' --exclude=Drafts $SERVER:/home/$user/mail $ARCHIVE_DIR/$user/current/
+  rsync -rltz --delete -e "$RSYNC_SSH_KEY" $RSYNC_PERMS --exclude=backup --exclude='Ze *' --exclude=Trash --exclude='msgid.cache' --exclude='.subscriptions' --exclude='proc-log' --exclude=Drafts $REMOTE_USER@$SERVER:/home/$user/mail $ARCHIVE_DIR/$user/current/
   chmod +x $ARCHIVE_DIR/$user/current/mail
-  rsync -ltz -e "$RSYNC_SSH_KEY" $RSYNC_PERMS $SERVER:/var/mail/$user $ARCHIVE_DIR/$user/current/inbox
+  rsync -ltz -e "$RSYNC_SSH_KEY" $RSYNC_PERMS $REMOTE_USER@$SERVER:/var/mail/$user $ARCHIVE_DIR/$user/current/inbox
 
 done
