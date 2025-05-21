@@ -58,6 +58,18 @@
 #	Use svn / cvs checkin and checkout directly to sync
 #	files under revision control.
 #
+#   Update on organization:
+#
+#   Nowadays, I have all documents in "Documents", and pictures
+#   in "Pictures", and those are the only things I sync. I no
+#   longer sync my personal machines with my work machine. That
+#   also keeps my organization simpler.
+#
+#   Note that I wrote this script and the original documentation
+#   before I started using git -- that was a long time ago! Now,
+#   everything under version control is in git; I still do not
+#   sync directories under revision control.
+#
 # WARNING:
 #
 #	This script does two-way syncs between multiple machines.
@@ -105,7 +117,10 @@ if [ "X$2" = "Xsync" ] || [ "X$hasID" != "X" ] ; then
 	# Check to see if we have a username in the target
 	# or not.  If we do not, then we will use $USER
 	#
-	if [ X`echo "$1" | grep "@"` \!= "X" ] ; then
+	if [ "X$1" = "Xbat-net" ] ; then
+		SYSTEM=`uname -n`
+		target=$USER"@10.42.0.1:/mnt/archive/systems/"$SYSTEM
+	elif [ X`echo "$1" | grep "@"` \!= "X" ] ; then
 		remoteuser=`echo $1 | sed -e 's/@.*//'`
 		target=$1:/home/$remoteuser
 	else
